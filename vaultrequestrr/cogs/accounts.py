@@ -65,7 +65,7 @@ class RegisterModal(discord.ui.Modal, title="Create Local Seerr Account"):
         if result.status is LinkStatus.LINKED:
             await interaction.followup.send(
                 f"✅ Local account **{uname}** (`{mail}`) has been created and linked to your Discord account!\n"
-                f"You can now Use `/request` right here.",
+                f"You can now use `/tv`, `/movie`, and `/anime`!",
                 ephemeral=True,
             )
             return
