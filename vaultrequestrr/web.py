@@ -59,6 +59,7 @@ class WebDashboard:
                 web.post("/links/unlink", self.unlink_action),
                 web.post("/links/remap", self.remap_action),
                 web.post("/links/limit", self.limit_action),
+                web.post("/links/reset_local", self.reset_local_action),
                 web.get("/invites", self.invites_page),
                 web.get("/activity", self.activity_page),
                 web.get("/activity/detail", self.activity_detail),
@@ -106,6 +107,13 @@ class WebDashboard:
         if self._runner is not None:
             await self._runner.cleanup()
             self._runner = None
+            
+    async def reset_local_action(self, request: web.Request) -> web.Response:
+        data = await request.post()
+        discord_id = str(data.get("discord_id", ""))
+        if discord_id:
+            await self.bot.linker.reset_local_account(discord_id)
+        raise web.HTTPFound("/links?msg=" + _q("Local account creation limit reset."))
 
     # -- auth --------------------------------------------------------------
 
@@ -247,7 +255,10 @@ class WebDashboard:
 
     async def links_page(self, request: web.Request) -> web.Response:
         links = await self.bot.store.list_links()
+        local_accounts = await self.bot.store.list_local_accounts()
         global_limit = await self.bot.store.get_setting("plex_invite_limit") or "3"
+        
+        # Render Linked Accounts table rows...
         rows = ""
         for link in links:
             who = html.escape(link.plex_username or link.email or "—")
@@ -283,6 +294,26 @@ class WebDashboard:
         if not links:
             rows = _empty_row(6, "No linked users yet.", "link")
 
+        # Render Local Accounts table rows
+        local_rows = ""
+        for loc in local_accounts:
+            local_rows += f"""
+            <tr>
+              <td><code>{html.escape(loc.discord_id)}</code></td>
+              <td>{html.escape(loc.username)}</td>
+              <td>{html.escape(loc.email)}</td>
+              <td>{loc.seerr_user_id}</td>
+              <td>{html.escape(loc.created_at[:19])}</td>
+              <td class="actions">
+                <form method="post" action="/links/reset_local" onsubmit="return confirm('Reset the local account creation limit for this user? This allows them to run /register again.')">
+                  <input type="hidden" name="discord_id" value="{html.escape(loc.discord_id)}">
+                  <button class="warn">Reset Limit</button>
+                </form>
+              </td>
+            </tr>"""
+        if not local_accounts:
+            local_rows = _empty_row(6, "No local accounts created via Discord yet.", "users")
+
         body = f"""
         {_flash(request)}
         <div class="card">
@@ -293,6 +324,15 @@ class WebDashboard:
           </table>
           <p class="muted small">Leave an invite limit blank to use the global default
             ({html.escape(str(global_limit))}, set on the <a href="/settings">Settings</a> page).</p>
+        </div>
+        
+        <div class="card" style="margin-top: 30px;">
+          <h2>Discord-Created Local Accounts ({len(local_accounts)})</h2>
+          <table>
+            <thead><tr><th>Discord ID</th><th>Username</th><th>Email</th><th>Seerr ID</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody>{local_rows}</tbody>
+          </table>
+          <p class="muted small">Clicking <strong>Reset Limit</strong> clears their permanent creation lock, allowing them to use <code>/register</code> to create a new local account again.</p>
         </div>
         """
         return _html(_layout("Links", body))

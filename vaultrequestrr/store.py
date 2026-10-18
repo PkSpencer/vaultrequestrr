@@ -743,6 +743,44 @@ class LinkStore:
         await self._conn.execute(
             "UPDATE arr_instances SET is_default = 0 WHERE kind = ?", (kind,)
         )
+        
+        async def list_local_accounts(self) -> list[LocalAccountRecord]:
+        async with self._conn.execute(
+            "SELECT * FROM local_accounts ORDER BY created_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [
+            LocalAccountRecord(
+                discord_id=row["discord_id"],
+                seerr_user_id=row["seerr_user_id"],
+                username=row["username"],
+                email=row["email"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+
+    async def get_local_account_by_seerr_user(self, seerr_user_id: int) -> LocalAccountRecord | None:
+        async with self._conn.execute(
+            "SELECT * FROM local_accounts WHERE seerr_user_id = ? LIMIT 1",
+            (seerr_user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if not row:
+            return None
+        return LocalAccountRecord(
+            discord_id=row["discord_id"],
+            seerr_user_id=row["seerr_user_id"],
+            username=row["username"],
+            email=row["email"],
+            created_at=row["created_at"],
+        )
+
+    async def remove_local_account(self, discord_id: str) -> None:
+        await self._conn.execute(
+            "DELETE FROM local_accounts WHERE discord_id = ?", (discord_id,)
+        )
+        await self._conn.commit()
 
 
 def _row_to_tracked(row: aiosqlite.Row) -> TrackedRequest:
