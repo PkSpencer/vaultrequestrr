@@ -78,6 +78,14 @@ CREATE TABLE IF NOT EXISTS arr_instances (
     is_default  INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS local_accounts (
+    discord_id     TEXT PRIMARY KEY,
+    seerr_user_id  INTEGER NOT NULL,
+    username       TEXT NOT NULL,
+    email          TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+);
 """
 
 # Columns added after the table first shipped; applied idempotently on connect.
@@ -179,6 +187,14 @@ class ArrInstance:
     is_4k: bool
     is_default: bool
     created_at: str
+    
+@dataclass(frozen=True)
+class LocalAccountRecord:
+    discord_id: str
+    seerr_user_id: int
+    username: str
+    email: str
+    created_at: str
 
 
 class LinkStore:
@@ -269,6 +285,41 @@ class LinkStore:
         ) as cursor:
             rows = await cursor.fetchall()
         return [_row_to_link(row) for row in rows]
+        
+        # -- local accounts (1-per-user creation tracking) ---------------------
+
+    async def get_local_account(self, discord_id: str) -> LocalAccountRecord | None:
+        async with self._conn.execute(
+            "SELECT * FROM local_accounts WHERE discord_id = ?", (discord_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if not row:
+            return None
+        return LocalAccountRecord(
+            discord_id=row["discord_id"],
+            seerr_user_id=row["seerr_user_id"],
+            username=row["username"],
+            email=row["email"],
+            created_at=row["created_at"],
+        )
+
+    async def record_local_account(
+        self,
+        discord_id: str,
+        seerr_user_id: int,
+        username: str,
+        email: str,
+    ) -> LocalAccountRecord:
+        created_at = datetime.now(timezone.utc).isoformat()
+        await self._conn.execute(
+            """
+            INSERT INTO local_accounts (discord_id, seerr_user_id, username, email, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (discord_id, seerr_user_id, username, email, created_at),
+        )
+        await self._conn.commit()
+        return LocalAccountRecord(discord_id, seerr_user_id, username, email, created_at)
 
     # -- tracked requests (notifications + activity log) -------------------
 

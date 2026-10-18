@@ -520,6 +520,21 @@ class SeerrClient:
             if user.matches(identity):
                 return user
         return None
+        
+    async def create_local_user(
+        self,
+        email: str,
+        username: str,
+        password: str,
+    ) -> SeerrUser:
+        """Create a local user in Seerr (POST /api/v1/user) and return it."""
+        body: dict[str, Any] = {
+            "email": email.strip(),
+            "username": username.strip(),
+            "password": password,
+        }
+        raw = await self._post("user", body)
+        return _to_user(raw or {})
 
     # -- notification settings (Discord-ID write-back) ---------------------
 

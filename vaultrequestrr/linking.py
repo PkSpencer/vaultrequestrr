@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 class LinkStatus(Enum):
     LINKED = auto()
     NOT_FOUND = auto()  # no Seerr user matched the provided Plex identity
-    ERROR = auto()  # Seerr could not be reached
-
+    ALREADY_CREATED = auto()  # Discord user already used their 1 local account slot
+    ALREADY_LINKED = auto()  # Discord user is already linked to a Seerr account
+    ERROR = auto()  # Seerr could not be reached or rejected creation
 
 @dataclass(frozen=True)
 class LinkResult:
@@ -72,3 +73,68 @@ class AccountLinker:
 
     async def unlink(self, discord_id: str) -> None:
         await self._store.remove(discord_id)
+        
+    async def register_local(
+        self,
+        discord_id: str,
+        username: str,
+        email: str,
+        password: str,
+    ) -> LinkResult:
+        """Create a local Seerr user (limit 1 per Discord ID) and link it."""
+        existing_created = await self._store.get_local_account(discord_id)
+        if existing_created is not None:
+            return LinkResult(
+                LinkStatus.ALREADY_CREATED,
+                message=f"You have already created a local account (`{existing_created.username}`). Limit is one per Discord user.",
+            )
+
+        existing_link = await self._store.get(discord_id)
+        if existing_link is not None:
+            return LinkResult(
+                LinkStatus.ALREADY_LINKED,
+                message="Your Discord account is already linked to a Seerr account.",
+            )
+
+        # Also check if the email or username already exists in Seerr
+        try:
+            existing_seerr = await self._seerr.find_user_by_plex_identity(email) or await self._seerr.find_user_by_plex_identity(username)
+            if existing_seerr is not None:
+                return LinkResult(
+                    LinkStatus.ERROR,
+                    message="A Seerr user with that username or email already exists.",
+                )
+            user = await self._seerr.create_local_user(
+                email=email,
+                username=username,
+                password=password,
+            )
+        except SeerrError as exc:
+            logger.warning("Seerr local user creation failed for Discord %s: %s", discord_id, exc)
+            return LinkResult(LinkStatus.ERROR, message=str(exc))
+
+        # Record permanent 1-per-user creation and link the account
+        await self._store.record_local_account(
+            discord_id=discord_id,
+            seerr_user_id=user.id,
+            username=user.username or username,
+            email=user.email or email,
+        )
+        await self._store.save(
+            discord_id=discord_id,
+            seerr_user_id=user.id,
+            plex_username=user.username or user.display_name or username,
+            email=user.email or email,
+        )
+
+        try:
+            await self._seerr.add_discord_id(user.id, discord_id)
+        except SeerrError as exc:
+            logger.warning(
+                "Created local Seerr user %s for Discord %s, but Discord ID write-back failed: %s",
+                user.id,
+                discord_id,
+                exc,
+            )
+
+        return LinkResult(LinkStatus.LINKED, user=user)
