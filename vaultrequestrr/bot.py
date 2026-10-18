@@ -210,6 +210,7 @@ class VaultRequestrr(commands.Bot):
             logger.info("Plex invites enabled (server %s)", plex_machine_id)
 
         # Import here to avoid a circular import at module load.
+        from .cogs.accounts import AccountCog
         from .cogs.invites import InviteCog
         from .cogs.issues import IssueCog
         from .cogs.requests import RequestCog
@@ -217,6 +218,7 @@ class VaultRequestrr(commands.Bot):
         await self.add_cog(RequestCog(self))
         await self.add_cog(IssueCog(self))
         await self.add_cog(InviteCog(self))
+        await self.add_cog(AccountCog(self))
 
         if self.config.discord_guild_id:
             guild = discord.Object(id=self.config.discord_guild_id)
