@@ -744,7 +744,7 @@ class LinkStore:
             "UPDATE arr_instances SET is_default = 0 WHERE kind = ?", (kind,)
         )
         
-        async def list_local_accounts(self) -> list[LocalAccountRecord]:
+    async def list_local_accounts(self) -> list[LocalAccountRecord]:
         async with self._conn.execute(
             "SELECT * FROM local_accounts ORDER BY created_at DESC"
         ) as cursor:
