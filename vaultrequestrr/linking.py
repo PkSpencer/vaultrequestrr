@@ -139,6 +139,6 @@ class AccountLinker:
 
         return LinkResult(LinkStatus.LINKED, user=user)
         
-        async def reset_local_account(self, discord_id: str) -> None:
-             """Remove the permanent local creation record so the user can register again."""
-            await self._store.remove_local_account(discord_id)
+    async def reset_local_account(self, discord_id: str) -> None:
+        """Remove the permanent local creation record so the user can register again."""
+        await self._store.remove_local_account(discord_id)
